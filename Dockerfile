@@ -3,6 +3,8 @@ FROM python:3.9-slim
 
 # 设置环境变量，防止安装过程中出现交互式提示
 ENV DEBIAN_FRONTEND=noninteractive
+# 设置默认端口
+ENV PORT=8000
 
 # 更新包列表并安装系统依赖:
 # - ocrmypdf: 核心工具
@@ -10,7 +12,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - tesseract-ocr: OCR 引擎
 # - tesseract-ocr-eng: Tesseract 英语语言包
 # - tesseract-ocr-chi-sim: Tesseract 简体中文语言包 (包含数字识别能力)
-# **** 这是关键：确保安装了需要的语言包 ****
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ocrmypdf \
     ghostscript \
@@ -31,14 +32,15 @@ COPY requirements.txt .
 # --no-cache-dir 减小镜像大小
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制 FastAPI 应用代码
+# 复制 FastAPI 应用代码和入口脚本
 COPY main.py .
+COPY entrypoint.sh .
 
-# 暴露端口 (Hugging Face Spaces 通常会注入 PORT 环境变量, 默认为 7860)
-# Uvicorn 将监听这个端口
-EXPOSE ${PORT:-8000}
+# 设置入口脚本可执行权限
+RUN chmod +x /app/entrypoint.sh
 
-# 启动 FastAPI 应用的命令
-# 使用 Hugging Face 提供的 PORT 环境变量，如果不存在则默认为 8000
-# "--host 0.0.0.0" 使其可以从外部访问
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PORT:-8000}"]
+# 暴露端口
+EXPOSE 8000
+
+# 使用入口脚本启动应用
+ENTRYPOINT ["/app/entrypoint.sh"]
