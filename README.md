@@ -1,5 +1,4 @@
 ---
-# Hugging Face Spaces 所需的配置信息
 title: OCRmyPDF API 接口 # 显示在 Space 页面的标题 (可自定义)
 emoji: 📄 # Space 图标的 Emoji (可选)
 colorFrom: blue # 主题颜色起始 (可选)
@@ -9,50 +8,108 @@ app_port: 8000 # 你的 FastAPI 应用在容器内部监听的端口 (必须与 
 pinned: false # 是否在你的个人资料页置顶这个 Space (可选)
 ---
 
-# OCRmyPDF API on Hugging Face Spaces
+# OCRmyPDF API 服务
 
-这个 Space 提供了一个 REST API 接口，可以使用 OCRmyPDF 为 PDF 文件添加 OCR 文本层。此实例已配置为处理包含**英文**、**简体中文**和**数字**的文档。
+本项目提供一个基于FastAPI的REST API，用于通过OCRmyPDF对PDF文件进行OCR处理，添加可搜索的文本层。API支持中文和英文OCR识别。
 
-## 如何使用
+## 部署到Hugging Face Spaces
 
-向 `/ocr/` 端点发送 POST 请求，请求体中包含 PDF 文件和所需的参数。
+### 方法1：直接从GitHub仓库部署
 
-**API 端点:** `/ocr/`
+1. 登录Hugging Face账户
+2. 创建新的Space:
+   - 点击"Create New Space"
+   - 输入名称，例如"ocrmypdf-api"
+   - 选择"Docker"作为Space SDK
+   - 选择适当的硬件规格（推荐：CPU-M或更高配置，以处理大型PDF）
+   - 输入GitHub仓库URL
+   - 点击"Create Space"
 
-**请求方法:** `POST`
+### 方法2：手动上传文件
 
-**表单数据参数 (Form Data):**
+1. 创建新的Space，选择"Docker"作为Space SDK
+2. 上传以下文件到Space:
+   - `Dockerfile`
+   - `requirements.txt`
+   - `main.py`
+   - `entrypoint.sh`
+   - `README.md`(可选)
+3. Space会自动构建Docker镜像并启动服务
 
-* `pdf_file`: (必需) 需要处理的 PDF 文件。
-* `language`: (必需) 用于 OCR 的语言。可选值：
-    * `eng` (仅英文)
-    * `chi_sim` (仅简体中文)
-    * `eng+chi_sim` (英文和简体中文 - **默认值**)
-* `force_ocr`: (可选) `true` 或 `false`。即使文件看起来已有文本，是否强制进行 OCR？ (默认: `false`)
-* `deskew`: (可选) `true` 或 `false`。在 OCR 前是否进行图像歪斜校正？ (默认: `false`)
-* `optimize`: (可选) `0`, `1`, `2`, 或 `3`。PDF 优化级别 (0=无, 1=安全, 2=较强, 3=最强)。 (默认: `0` 以保证稳定性)。
+## API使用说明
 
-**成功响应:**
+### 端点
 
-* 状态码: `200 OK`
-* Content-Type: `application/pdf`
-* 响应体: 处理完成的、带有 OCR 文本层的 PDF 文件。
+- `GET /` - API根检查
+- `GET /health` - 健康检查，返回OCRmyPDF和Tesseract版本信息
+- `GET /supported-languages/` - 查询支持的语言
+- `POST /ocr/` - 处理PDF文件
 
-**错误响应:**
+### 示例请求
 
-* 状态码: `400`, `422`, `500`, `504`
-* Content-Type: `application/json`
-* 响应体: 包含错误详情的 JSON 对象。
-
-**其他端点:**
-
-* `/`: GET - 检查 API 是否运行的基本端点。
-* `/supported-languages/`: GET - 返回支持的语言参数列表。
-
-## 使用示例 (curl)
+使用cURL:
 
 ```bash
-curl -X POST \
-  -F "pdf_file=@/path/to/your/local/input.pdf" \
+curl -X POST "https://your-space-name.hf.space/ocr/" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "pdf_file=@your_file.pdf" \
   -F "language=eng+chi_sim" \
-  -F "deskew=true"
+  -F "force_ocr=false" \
+  -F "deskew=true" \
+  -F "optimize=1" \
+  --output processed.pdf
+```
+
+使用Python:
+
+```python
+import requests
+
+url = "https://your-space-name.hf.space/ocr/"
+
+payload = {
+    'language': 'eng+chi_sim',
+    'force_ocr': 'false',
+    'deskew': 'true',
+    'optimize': '1'
+}
+
+files = {
+    'pdf_file': open('your_file.pdf', 'rb')
+}
+
+response = requests.post(url, data=payload, files=files)
+
+# 保存处理后的PDF
+with open('processed.pdf', 'wb') as f:
+    f.write(response.content)
+```
+
+## 参数说明
+
+| 参数 | 类型 | 默认值 | 描述 |
+|------|------|--------|------|
+| language | string | "eng+chi_sim" | OCR语言，可选: "eng"(英文), "chi_sim"(简体中文), "eng+chi_sim"(中英文) |
+| force_ocr | boolean | false | 是否强制对所有页面进行OCR处理，即使已包含文本 |
+| deskew | boolean | false | 是否在OCR前自动校正倾斜的页面 |
+| optimize | integer | 0 | PDF优化级别: 0=不优化, 1=安全优化, 2=强力优化, 3=最大优化 |
+
+## 资源限制
+
+- 最大文件大小: 200MB
+- 最大页数: 1000页
+- 处理超时: 1800秒(30分钟)
+
+## 性能注意事项
+
+- 大型PDF文件处理可能需要较长时间
+- 高优化级别(2-3)会显著增加处理时间和资源消耗
+- 如遇到超时问题，请尝试减小文件大小或降低优化级别
+
+## 技术实现
+
+本服务基于:
+- OCRmyPDF官方Docker镜像
+- FastAPI框架
+- Tesseract OCR引擎(支持英文和简体中文)
