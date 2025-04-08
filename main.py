@@ -1,7 +1,6 @@
 import fastapi
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Response
 from fastapi.responses import FileResponse
-import subprocess
 import tempfile
 import os
 import shutil
@@ -9,13 +8,14 @@ import logging
 import uuid
 import PyPDF2
 from typing import Literal # 用于精确类型提示
+import ocrmypdf  # 直接导入OCRmyPDF的Python API
 
 # 配置日志记录
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # --- 配置 ---
-# 定义支持的 Tesseract 语言参数 (对应 Dockerfile 中安装的包)
+# 定义支持的 Tesseract 语言参数
 SUPPORTED_LANG_ARGS = {
     "eng": "English only",
     "chi_sim": "Simplified Chinese only",
@@ -46,11 +46,11 @@ async def read_root():
 async def health_check():
     """Provides a detailed health check of the API and its dependencies."""
     try:
-        # 检查 OCRmyPDF 是否可用
-        result = subprocess.run(['ocrmypdf', '--version'], capture_output=True, text=True, timeout=5)
-        ocrmypdf_version = result.stdout.strip() if result.returncode == 0 else "Not available"
+        # 检查OCRmyPDF版本
+        ocrmypdf_version = ocrmypdf.__version__
         
-        # 检查 Tesseract 是否可用
+        # 检查Tesseract
+        import subprocess
         tesseract_result = subprocess.run(['tesseract', '--version'], capture_output=True, text=True, timeout=5)
         tesseract_version = tesseract_result.stdout.split('\n')[0] if tesseract_result.returncode == 0 else "Not available"
         
@@ -87,14 +87,11 @@ async def get_supported_languages():
               504: {"description": "Gateway Timeout (OCR processing took too long)"}
           })
 async def run_ocr_on_pdf(
-    # 使用 Literal 类型强制 language 参数必须是允许的值之一
     language: ALLOWED_LANGUAGES = Form(DEFAULT_LANGUAGE_ARG, description=f"Language(s) for OCR. Choose from: {list(SUPPORTED_LANG_ARGS.keys())}. Default: '{DEFAULT_LANGUAGE_ARG}'."),
-    # pdf_file 参数是必需的
     pdf_file: UploadFile = File(..., description="The PDF file to be processed."),
-    # 可选：添加其他 OCRmyPDF 参数作为 Form 输入
     force_ocr: bool = Form(False, description="Force OCR even if text seems present?"),
     deskew: bool = Form(False, description="Deskew the image before OCR?"),
-    optimize: int = Form(0, description="PDF optimization level (0=None, 1=Safe(Default in OCRmyPDF), 2=Strong, 3=Max) - 0 recommended for stability in Spaces")
+    optimize: int = Form(0, description="PDF optimization level (0=None, 1=Safe, 2=Strong, 3=Max) - 0 recommended for stability in Spaces")
 ):
     """
     Accepts a PDF file, performs OCR using the specified language(s),
@@ -119,7 +116,6 @@ async def run_ocr_on_pdf(
     # 创建唯一的临时工作目录
     temp_dir = tempfile.mkdtemp()
     # 在临时目录中定义输入和输出文件的路径
-    # 使用 UUID 确保文件名唯一，即使原始文件名包含特殊字符
     input_filename = f"input_{uuid.uuid4()}.pdf"
     output_filename = f"output_{uuid.uuid4()}.pdf"
     input_path = os.path.join(temp_dir, input_filename)
@@ -154,76 +150,66 @@ async def run_ocr_on_pdf(
             logger.error(f"Error checking PDF pages: {str(e)}")
             # 继续处理，不中断流程
 
-        # 构建 ocrmypdf 命令列表
-        cmd = [
-            'ocrmypdf',
-            '-l', language, # 使用用户选择的语言参数
-            '--jobs', '1', # 在资源受限的 Spaces 环境中，限制为单核处理可能更稳定
-        ]
-        # 根据用户选项添加参数
-        if force_ocr:
-            cmd.append('--force-ocr')
-        else:
-            # 默认跳过已有文本的页面，通常更安全快速
-            cmd.append('--skip-text')
-        if deskew:
-            cmd.append('--deskew')
-        if optimize >= 0 and optimize <= 3:
-             # 警告：优化可能非常耗时耗内存，尤其 optimize 2 或 3
-            cmd.extend(['--optimize', str(optimize)])
-        
-        # 添加输入和输出文件路径
-        cmd.extend([input_path, output_path])
+        # 使用OCRmyPDF Python API处理PDF
+        logger.info("Starting OCR processing using OCRmyPDF Python API")
+        try:
+            ocrmypdf.ocr(
+                input_file=input_path,
+                output_file=output_path,
+                language=language,
+                force_ocr=force_ocr,
+                skip_text=(not force_ocr),  # 如果不强制OCR，则跳过已有文本
+                deskew=deskew,
+                optimize=optimize if optimize >= 0 and optimize <= 3 else 0,
+                jobs=1,  # 在资源受限的环境中使用单线程
+                progress_bar=False  # 禁用进度条（在Web服务中不需要）
+            )
+            logger.info("OCR processing completed successfully")
+        except ocrmypdf.exceptions.PriorOcrFoundError as e:
+            logger.warning(f"Prior OCR found: {str(e)}")
+            # 这种情况下我们可以考虑复制原始文件作为输出
+            shutil.copy(input_path, output_path)
+            logger.info("Copied original file as it already contains OCR")
+        except ocrmypdf.exceptions.MissingDependencyError as e:
+            logger.error(f"Missing dependency: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"OCR processing failed due to missing dependency: {str(e)}")
+        except ocrmypdf.exceptions.EncryptedPdfError as e:
+            logger.error(f"Encrypted PDF: {str(e)}")
+            raise HTTPException(status_code=400, detail="Cannot process encrypted PDF. Please remove the password protection first.")
+        except ocrmypdf.exceptions.BadArgsError as e:
+            logger.error(f"Bad arguments: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Invalid processing parameters: {str(e)}")
+        except Exception as e:
+            logger.error(f"OCR processing failed: {str(e)}")
+            raise HTTPException(status_code=500, detail="OCR processing failed. Please try again with different parameters.")
 
-        command_str = ' '.join(cmd)
-        logger.info(f"Executing command: {command_str}")
-
-        # 执行命令，设置合理的超时
-        result = subprocess.run(
-            cmd,
-            capture_output=True, # 捕获 stdout 和 stderr
-            text=True,           # 以文本模式处理输出
-            check=False,         # 不在返回码非零时自动抛出异常，手动检查
-            timeout=TIMEOUT_SECONDS
-        )
-
-        # 检查命令执行结果
-        if result.returncode != 0:
-            # 如果 OCRmyPDF 失败
-            error_message = f"OCRmyPDF failed with exit code {result.returncode}.\nStderr: {result.stderr[:1000]}\nStdout: {result.stdout[:1000]}" # 限制错误信息长度
-            logger.error(error_message)
-            raise HTTPException(status_code=500, detail=f"OCR processing failed. Please check server logs for details.") # 不要向客户端暴露过多内部错误
-        elif not os.path.exists(output_path):
-             # 如果命令成功但未找到输出文件（理论上不应发生，但作为保险）
-            error_message = "OCR command seemed successful but output file was not found."
+        # 检查输出文件是否存在
+        if not os.path.exists(output_path):
+            error_message = "OCR processing seemed successful but output file was not found."
             logger.error(error_message)
             raise HTTPException(status_code=500, detail=error_message)
-        else:
-            # OCR 成功
-            logger.info(f"OCR successful. Output file generated at '{output_path}'")
-            # 准备返回文件响应
-            # 生成一个对用户友好的下载文件名
-            download_filename = f"ocr_{pdf_file.filename}" if pdf_file.filename else "processed_document.pdf"
+        
+        # OCR 成功，准备返回文件
+        logger.info(f"OCR successful. Output file generated at '{output_path}'")
+        # 生成友好的下载文件名
+        download_filename = f"ocr_{pdf_file.filename}" if pdf_file.filename else "processed_document.pdf"
 
-            # 使用 FileResponse 高效地返回文件
-            return FileResponse(
-                path=output_path,
-                media_type='application/pdf',
-                filename=download_filename
-            )
+        # 返回处理后的文件
+        return FileResponse(
+            path=output_path,
+            media_type='application/pdf',
+            filename=download_filename
+        )
 
-    except subprocess.TimeoutExpired:
-        logger.error(f"OCR processing timed out after {TIMEOUT_SECONDS} seconds for file '{pdf_file.filename}'.")
-        raise HTTPException(status_code=504, detail=f"OCR processing took too long and timed out after {TIMEOUT_SECONDS} seconds. Try with a smaller file or disable heavy options.")
     except HTTPException as http_exc:
         # 重新抛出已知的 HTTP 异常
         raise http_exc
     except Exception as e:
         # 捕获其他意外错误
-        logger.error(f"An unexpected error occurred during OCR processing for file '{pdf_file.filename}': {e}", exc_info=True) # exc_info=True 记录堆栈跟踪
-        raise HTTPException(status_code=500, detail=f"An unexpected server error occurred. Please contact support or check server logs.")
+        logger.error(f"An unexpected error occurred during OCR processing for file '{pdf_file.filename}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected server error occurred. Please try again later.")
     finally:
-        # *** 无论成功与否，都清理临时目录及其内容 ***
+        # 无论成功与否，都清理临时目录及其内容
         if os.path.exists(temp_dir):
             logger.info(f"Cleaning up temporary directory: {temp_dir}")
             try:
@@ -236,12 +222,8 @@ async def run_ocr_on_pdf(
 
 async def get_upload_file_size(upload_file: UploadFile) -> int:
     """获取上传文件的大小（以字节为单位）"""
-    # 记录当前位置
     current_position = upload_file.file.tell()
-    # 移动到文件末尾
     upload_file.file.seek(0, 2)  # 2 表示从文件末尾
-    # 获取文件大小
     size = upload_file.file.tell()
-    # 恢复到原始位置
     upload_file.file.seek(current_position)
     return size

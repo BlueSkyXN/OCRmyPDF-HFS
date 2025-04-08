@@ -6,19 +6,21 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 设置默认端口
 ENV PORT=8000
 
-# 更新包列表并安装系统依赖:
-# - ocrmypdf: 核心工具
-# - ghostscript: PDF 处理依赖
-# - tesseract-ocr: OCR 引擎
-# - tesseract-ocr-eng: Tesseract 英语语言包
-# - tesseract-ocr-chi-sim: Tesseract 简体中文语言包 (包含数字识别能力)
+# 更新包列表并安装系统依赖
+# OCRmyPDF 需要这些系统依赖，即使我们通过 pip 安装 OCRmyPDF 本身
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ocrmypdf \
     ghostscript \
     tesseract-ocr \
     tesseract-ocr-eng \
     tesseract-ocr-chi-sim \
-    # 如果还需要其他语言，在这里添加相应的 tesseract-ocr-[LANG] 包
+    unpaper \
+    pngquant \
+    qpdf \
+    liblept5 \
+    libffi-dev \
+    # 编译依赖
+    build-essential \
+    python3-dev \
     # 清理 apt 缓存以减小镜像大小
     && rm -rf /var/lib/apt/lists/*
 

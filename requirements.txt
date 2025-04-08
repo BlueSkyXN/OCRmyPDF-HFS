@@ -2,3 +2,5 @@ fastapi==0.95.0
 uvicorn[standard]==0.22.0
 python-multipart==0.0.6
 PyPDF2==3.0.1
+# 直接通过pip安装OCRmyPDF
+ocrmypdf==15.4.3
