@@ -5,10 +5,13 @@ FROM jbarlow83/ocrmypdf-alpine:latest
 ENV PORT=8000
 ENV PYTHONUNBUFFERED=1
 
+# 安装Python和pip
+RUN apk add --no-cache python3 py3-pip
+
 # 安装Python依赖
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # 复制应用代码和启动脚本
 COPY main.py .
