@@ -12,6 +12,16 @@ pinned: false # 是否在你的个人资料页置顶这个 Space (可选)
 
 本项目提供一个基于FastAPI的REST API，用于通过OCRmyPDF对PDF文件进行OCR处理，添加可搜索的文本层。API支持中文和英文OCR识别。
 
+## 🔒 安全性 (Security)
+
+本项目已经过全面的安全审查和改进：
+- ✅ 所有依赖包已更新，修复已知安全漏洞
+- ✅ 实施了资源泄漏保护
+- ✅ 添加了 DoS 攻击防护
+- ✅ 遵循安全最佳实践
+
+详细信息请查看 [SECURITY.md](SECURITY.md) 和 [CODE_REVIEW_REPORT.md](CODE_REVIEW_REPORT.md)
+
 ## 部署到Hugging Face Spaces
 
 ### 方法1：直接从GitHub仓库部署

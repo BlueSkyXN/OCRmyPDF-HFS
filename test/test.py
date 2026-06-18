@@ -2,10 +2,16 @@ import requests
 import os
 import time
 
-# API端点
-api_url = "https://blueskyxn-ocrmypdf-hfs.hf.space/ocr/"
-pdf_path = r"F:\Download\20250401-113339.pdf"
-output_path = r"F:\Download\ocr_result_python.pdf"
+# API端点 - 可通过环境变量配置
+api_url = os.getenv("OCR_API_URL", "http://localhost:8000/ocr/")
+pdf_path = os.getenv("TEST_PDF_PATH", "test_input.pdf")
+output_path = os.getenv("OUTPUT_PDF_PATH", "test_output.pdf")
+
+# 检查输入文件是否存在
+if not os.path.exists(pdf_path):
+    print(f"错误: 输入文件不存在: {pdf_path}")
+    print("请设置环境变量 TEST_PDF_PATH 指向一个有效的PDF文件")
+    exit(1)
 
 # 准备文件和参数
 files = {"pdf_file": open(pdf_path, "rb")}
@@ -17,6 +23,7 @@ data = {
 
 print(f"开始处理文件: {pdf_path}")
 print(f"文件大小: {os.path.getsize(pdf_path)/1024/1024:.2f} MB")
+print(f"API URL: {api_url}")
 start_time = time.time()
 
 try:
@@ -38,6 +45,8 @@ try:
             print(f"错误详情: {error_details}")
         except:
             print(f"响应内容: {response.text[:500]}...")
+except Exception as e:
+    print(f"请求失败: {str(e)}")
 finally:
     # 确保关闭文件
     files["pdf_file"].close()

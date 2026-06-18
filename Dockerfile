@@ -28,24 +28,7 @@ RUN chmod +x /app/entrypoint.sh
 
 # 创建临时工作目录
 RUN mkdir -p /app/temp
-RUN chmod 777 /app/temp
-
-# 暴露端口
-EXPOSE 8000
-
-# 使用入口脚本启动应用
-ENTRYPOINT ["/app/entrypoint.sh"]
-
-# 复制应用代码和启动脚本
-COPY main.py .
-COPY entrypoint.sh .
-
-# 设置启动脚本权限
-RUN chmod +x /app/entrypoint.sh
-
-# 创建临时工作目录
-RUN mkdir -p /app/temp
-RUN chmod 777 /app/temp
+RUN chmod 750 /app/temp
 
 # 暴露端口
 EXPOSE 8000

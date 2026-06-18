@@ -38,6 +38,25 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# 添加请求体大小限制中间件，防止DoS攻击
+@app.middleware("http")
+async def limit_upload_size(request: fastapi.Request, call_next):
+    """限制上传文件大小，防止大文件上传导致的DoS攻击"""
+    if request.method == "POST":
+        content_length = request.headers.get("content-length")
+        if content_length:
+            # 将最大文件大小转换为字节，并添加额外空间用于multipart开销（通常是1.5倍）
+            max_size_bytes = int(MAX_FILE_SIZE_MB * 1024 * 1024 * 1.5)
+            if int(content_length) > max_size_bytes:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "detail": f"Request body too large. Maximum allowed size is {MAX_FILE_SIZE_MB}MB for PDF files."
+                    }
+                )
+    response = await call_next(request)
+    return response
+
 # 确保临时目录存在
 os.makedirs(TEMP_DIR, exist_ok=True)
 
@@ -155,6 +174,9 @@ async def run_ocr_on_pdf(
     output_path = os.path.join(temp_dir, output_filename)
 
     logger.info(f"Processing in temporary directory: {temp_dir}")
+    
+    # 标记是否成功完成处理
+    cleanup_registered = False
 
     try:
         # 将上传的文件保存到临时输入路径
@@ -249,6 +271,7 @@ async def run_ocr_on_pdf(
         # 注册清理临时目录的后台任务
         if background_tasks:
             background_tasks.add_task(cleanup_temp_dir, temp_dir)
+            cleanup_registered = True
 
         # 返回处理后的文件
         return FileResponse(
@@ -272,9 +295,9 @@ async def run_ocr_on_pdf(
         # 确保关闭上传的文件句柄
         await pdf_file.close()
         
-        # 清理临时目录会由后台任务处理，这里不需要额外操作
-        # 如果没有注册后台任务，则在这里清理
-        if not background_tasks and os.path.exists(temp_dir):
+        # 如果没有成功注册后台清理任务，立即清理临时目录
+        # 这确保在错误情况下不会泄漏临时文件
+        if not cleanup_registered and os.path.exists(temp_dir):
             cleanup_temp_dir(temp_dir)
 
 def cleanup_temp_dir(temp_dir: str):
