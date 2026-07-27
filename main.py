@@ -7,6 +7,7 @@ import os
 import shutil
 import logging
 import uuid
+import json
 import PyPDF2
 from typing import Literal, Optional, List
 
@@ -29,6 +30,9 @@ MAX_FILE_SIZE_MB = 200  # 最大文件大小，MB
 MAX_PAGES = 1000  # 最大页数
 TIMEOUT_SECONDS = 1800  # OCR 处理超时时间，秒
 TEMP_DIR = "/app/temp"  # 临时文件目录
+MAX_REQUEST_BODY_BYTES = int(MAX_FILE_SIZE_MB * 1024 * 1024 * 1.5)
+REQUIRED_TESSERACT_LANGUAGES = {"eng", "chi_sim"}
+BUILD_SOURCE_PATH = "/opt/hfs/BUILD_SOURCE.json"
 # ----------------
 
 # 初始化 FastAPI 应用
@@ -37,6 +41,31 @@ app = FastAPI(
     description="API to add OCR text layer (English/Chinese) to PDF files using OCRmyPDF.",
     version="1.0.0"
 )
+
+@app.middleware("http")
+async def limit_upload_size(request: fastapi.Request, call_next):
+    """在解析 multipart 请求前拒绝超过既有上传上限的请求。"""
+    if request.method == "POST":
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                request_size = int(content_length)
+            except ValueError:
+                return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header."})
+            if request_size < 0:
+                return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header."})
+            if request_size > MAX_REQUEST_BODY_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "detail": (
+                            "Request body too large. Maximum allowed PDF size is "
+                            f"{MAX_FILE_SIZE_MB}MB."
+                        )
+                    },
+                )
+    return await call_next(request)
+
 
 # 确保临时目录存在
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -57,46 +86,85 @@ async def read_root():
 
 @app.get("/health", summary="Health Check")
 async def health_check():
-    """提供详细的API和依赖健康状态检查"""
+    """仅在 OCR 运行所需的命令、语言和临时空间都可用时返回 200。"""
     try:
-        # 检查 OCRmyPDF 是否可用
-        result = subprocess.run(['ocrmypdf', '--version'], capture_output=True, text=True, timeout=5)
-        ocrmypdf_version = result.stdout.strip() if result.returncode == 0 else "Not available"
-        
-        # 检查 Tesseract 是否可用
-        tesseract_result = subprocess.run(['tesseract', '--version'], capture_output=True, text=True, timeout=5)
-        tesseract_version = tesseract_result.stdout.split('\n')[0] if tesseract_result.returncode == 0 else "Not available"
-        
-        # 检查支持的语言
-        langs_result = subprocess.run(['tesseract', '--list-langs'], capture_output=True, text=True, timeout=5)
-        available_langs = langs_result.stdout.strip().split('\n')[1:] if langs_result.returncode == 0 else []
-        
-        # 检查磁盘空间
+        command_results = {
+            "ocrmypdf": subprocess.run(
+                ["ocrmypdf", "--version"], capture_output=True, text=True, timeout=5
+            ),
+            "tesseract": subprocess.run(
+                ["tesseract", "--version"], capture_output=True, text=True, timeout=5
+            ),
+            "ghostscript": subprocess.run(
+                ["gs", "--version"], capture_output=True, text=True, timeout=5
+            ),
+            "qpdf": subprocess.run(
+                ["qpdf", "--version"], capture_output=True, text=True, timeout=5
+            ),
+            "tesseract_languages": subprocess.run(
+                ["tesseract", "--list-langs"], capture_output=True, text=True, timeout=5
+            ),
+        }
+        langs_result = command_results["tesseract_languages"]
+        available_langs = (
+            set(langs_result.stdout.splitlines()[1:])
+            if langs_result.returncode == 0
+            else set()
+        )
+        missing_languages = sorted(REQUIRED_TESSERACT_LANGUAGES - available_langs)
+        tesseract_version = next(
+            (line for line in command_results["tesseract"].stdout.splitlines() if line), ""
+        )
         disk_info = os.statvfs(TEMP_DIR)
         free_space_mb = (disk_info.f_bavail * disk_info.f_frsize) / (1024 * 1024)
-        
-        # 返回健康状态
+
+        failed_checks = [
+            name for name, result in command_results.items() if result.returncode != 0
+        ]
+        if not tesseract_version and "tesseract" not in failed_checks:
+            failed_checks.append("tesseract")
+        if missing_languages and "tesseract_languages" not in failed_checks:
+            failed_checks.append("tesseract_languages")
+        if not os.path.isdir(TEMP_DIR) or not os.access(TEMP_DIR, os.W_OK) or free_space_mb <= 0:
+            failed_checks.append("temporary_storage")
+
+        if failed_checks:
+            logger.error("Health check failed: %s", ", ".join(failed_checks))
+            raise HTTPException(
+                status_code=503,
+                detail={"status": "unhealthy", "failed_checks": failed_checks},
+            )
+
+        try:
+            with open(BUILD_SOURCE_PATH, encoding="utf-8") as build_source_file:
+                build = json.load(build_source_file)
+        except (OSError, ValueError, TypeError):
+            build = {
+                "source_ref": "local",
+                "ocrmypdf_version": command_results["ocrmypdf"].stdout.strip(),
+            }
+
         return {
             "status": "healthy",
-            "ocrmypdf": ocrmypdf_version,
+            "ocrmypdf": command_results["ocrmypdf"].stdout.strip(),
             "tesseract": tesseract_version,
-            "available_languages": available_langs,
-            "disk_space": {
-                "free_mb": round(free_space_mb, 2),
-                "temp_dir": TEMP_DIR
-            },
+            "available_languages": sorted(available_langs),
+            "disk_space": {"free_mb": round(free_space_mb, 2), "temp_dir": TEMP_DIR},
             "resource_limits": {
                 "max_file_size_mb": MAX_FILE_SIZE_MB,
                 "max_pages": MAX_PAGES,
-                "timeout_seconds": TIMEOUT_SECONDS
-            }
+                "timeout_seconds": TIMEOUT_SECONDS,
+            },
+            "build": build,
         }
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Health check could not inspect OCR dependencies")
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "unhealthy", "failed_checks": ["dependency_inspection"]},
+        )
 
 @app.get("/supported-languages/", summary="List Supported Languages")
 async def get_supported_languages():
@@ -155,6 +223,7 @@ async def run_ocr_on_pdf(
     output_path = os.path.join(temp_dir, output_filename)
 
     logger.info(f"Processing in temporary directory: {temp_dir}")
+    cleanup_registered = False
 
     try:
         # 将上传的文件保存到临时输入路径
@@ -249,6 +318,7 @@ async def run_ocr_on_pdf(
         # 注册清理临时目录的后台任务
         if background_tasks:
             background_tasks.add_task(cleanup_temp_dir, temp_dir)
+            cleanup_registered = True
 
         # 返回处理后的文件
         return FileResponse(
@@ -272,9 +342,8 @@ async def run_ocr_on_pdf(
         # 确保关闭上传的文件句柄
         await pdf_file.close()
         
-        # 清理临时目录会由后台任务处理，这里不需要额外操作
-        # 如果没有注册后台任务，则在这里清理
-        if not background_tasks and os.path.exists(temp_dir):
+        # 仅在成功注册响应后台任务时延后清理；异常和无法注册时立即清理。
+        if not cleanup_registered and os.path.exists(temp_dir):
             cleanup_temp_dir(temp_dir)
 
 def cleanup_temp_dir(temp_dir: str):

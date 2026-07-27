@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!entrypoint.sh
+!README.md
+!hfs-dev.toml
+!.dockerignore
+!BUILD_SOURCE.json

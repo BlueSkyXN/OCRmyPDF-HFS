@@ -1,54 +1,37 @@
-# 使用官方OCRmyPDF Alpine镜像作为基础
-FROM jbarlow83/ocrmypdf-alpine:latest
+# Local development image. HFS deployments use cloud/hfs/Dockerfile, which checks out
+# the immutable application source commit recorded in BUILD_SOURCE.json.
+ARG PYTHON_BASE_IMAGE=python:3.11.9-slim-bookworm
+FROM ${PYTHON_BASE_IMAGE}
 
-# 设置环境变量
-ENV PORT=8000
-ENV PYTHONUNBUFFERED=1
+ARG OCRMY_PDF_VERSION=16.0.4
+ENV PORT=8000 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# 安装Python和必要的构建工具
-RUN apk add --no-cache python3 py3-pip python3-dev build-base
-
-# 设置工作目录
 WORKDIR /app
 
-# 创建和激活虚拟环境
-RUN python3 -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
+# OCRmyPDF needs these system tools for PDF conversion, OCR, language data, and
+# the existing optimize modes. Keep the dependency surface explicit rather than
+# inheriting an opaque OCR application image.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        ghostscript \
+        jbig2enc \
+        pngquant \
+        qpdf \
+        tesseract-ocr \
+        tesseract-ocr-chi-sim \
+        tesseract-ocr-eng \
+        unpaper \
+    && rm -rf /var/lib/apt/lists/*
 
-# 复制并安装依赖
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --requirement requirements.txt \
+    "ocrmypdf==${OCRMY_PDF_VERSION}"
 
-# 复制应用代码和启动脚本
-COPY main.py .
-COPY entrypoint.sh .
+COPY main.py entrypoint.sh ./
+RUN install -d -m 1777 /app/temp \
+    && chmod 755 /app/entrypoint.sh
 
-# 设置启动脚本权限
-RUN chmod +x /app/entrypoint.sh
-
-# 创建临时工作目录
-RUN mkdir -p /app/temp
-RUN chmod 777 /app/temp
-
-# 暴露端口
 EXPOSE 8000
-
-# 使用入口脚本启动应用
-ENTRYPOINT ["/app/entrypoint.sh"]
-
-# 复制应用代码和启动脚本
-COPY main.py .
-COPY entrypoint.sh .
-
-# 设置启动脚本权限
-RUN chmod +x /app/entrypoint.sh
-
-# 创建临时工作目录
-RUN mkdir -p /app/temp
-RUN chmod 777 /app/temp
-
-# 暴露端口
-EXPOSE 8000
-
-# 使用入口脚本启动应用
 ENTRYPOINT ["/app/entrypoint.sh"]
