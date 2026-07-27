@@ -15,7 +15,6 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         ghostscript \
         git \
-        jbig2enc \
         pngquant \
         qpdf \
         tesseract-ocr \

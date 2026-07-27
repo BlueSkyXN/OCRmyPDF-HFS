@@ -11,12 +11,13 @@ ENV PORT=8000 \
 WORKDIR /app
 
 # OCRmyPDF needs these system tools for PDF conversion, OCR, language data, and
-# the existing optimize modes. Keep the dependency surface explicit rather than
-# inheriting an opaque OCR application image.
+# the supported optimization path. Debian bookworm does not ship jbig2enc;
+# OCRmyPDF treats it as an optional lossy monochrome optimizer, so the image
+# keeps the available pngquant optimization without pretending jbig2enc is
+# installable from the pinned base distribution.
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         ghostscript \
-        jbig2enc \
         pngquant \
         qpdf \
         tesseract-ocr \
