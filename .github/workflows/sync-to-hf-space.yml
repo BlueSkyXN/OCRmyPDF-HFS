@@ -46,10 +46,10 @@ jobs:
           SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           set -euo pipefail
-          case "${SOURCE_REF}" in
-            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
-            *) printf '%s\n' 'source_ref must be a full lowercase 40-character commit.' >&2; exit 2 ;;
-          esac
+          [[ "${SOURCE_REF}" =~ ^[0-9a-f]{40}$ ]] || {
+            printf '%s\n' 'source_ref must be a full lowercase 40-character commit.' >&2
+            exit 2
+          }
           # GITHUB_SHA identifies the workflow event's default-branch revision for
           # workflow_dispatch, not necessarily the explicitly requested deployment ref.
           test "$(git rev-parse HEAD)" = "${SOURCE_REF}"
