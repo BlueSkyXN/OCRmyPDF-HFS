@@ -38,7 +38,13 @@ try:
     build_source = json.loads(build_source_path.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError) as exc:
     raise SystemExit(f"BUILD_SOURCE.json is invalid: {exc}") from exc
-if set(build_source) != {"base_image", "ocrmypdf_version", "source_repository", "source_ref"}:
+if set(build_source) != {
+    "base_image",
+    "ocrmypdf_version",
+    "pikepdf_version",
+    "source_repository",
+    "source_ref",
+}:
     raise SystemExit("BUILD_SOURCE.json has an unexpected provenance schema")
 if build_source["source_repository"] != expected_repository:
     raise SystemExit("BUILD_SOURCE.json source_repository is not the canonical public repository")
@@ -48,6 +54,8 @@ if not re.fullmatch(r"[^@\s]+@sha256:[0-9a-f]{64}", build_source["base_image"]):
     raise SystemExit("BUILD_SOURCE.json base_image must be an immutable digest")
 if build_source["ocrmypdf_version"] != "16.0.4":
     raise SystemExit("BUILD_SOURCE.json must record the approved OCRmyPDF version")
+if build_source["pikepdf_version"] != "8.15.1":
+    raise SystemExit("BUILD_SOURCE.json must record the compatible pikepdf version")
 
 dockerfile = (bundle_dir / "Dockerfile").read_text(encoding="utf-8")
 if "jbarlow83/ocrmypdf-alpine" in dockerfile:
@@ -68,6 +76,8 @@ if 'test "$(git -C /opt/source rev-parse HEAD)" = "$source_ref"' not in dockerfi
     raise SystemExit("Space Dockerfile must verify the checked-out source commit")
 if "BUILD_SOURCE.json must contain a 40-character lowercase commit" not in dockerfile:
     raise SystemExit("Space Dockerfile must reject non-commit source provenance")
+if "ARG PIKEPDF_VERSION=8.15.1" not in dockerfile or '"pikepdf==${PIKEPDF_VERSION}"' not in dockerfile:
+    raise SystemExit("Space Dockerfile must pin the approved pikepdf compatibility version")
 
 logical_lines: list[str] = []
 current = ""

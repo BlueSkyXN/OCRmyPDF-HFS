@@ -4,6 +4,7 @@ ARG PYTHON_BASE_IMAGE=python:3.11.13-slim-trixie
 FROM ${PYTHON_BASE_IMAGE}
 
 ARG OCRMY_PDF_VERSION=16.0.4
+ARG PIKEPDF_VERSION=8.15.1
 ENV PORT=8000 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -28,6 +29,7 @@ RUN apt-get update \
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --requirement requirements.txt \
+    "pikepdf==${PIKEPDF_VERSION}" \
     "ocrmypdf==${OCRMY_PDF_VERSION}"
 
 COPY main.py entrypoint.sh ./

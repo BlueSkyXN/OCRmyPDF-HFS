@@ -122,7 +122,7 @@ if count != 1:
 path.write_text(updated, encoding="utf-8")
 PY
 
-printf '{\n  "base_image": "%s",\n  "ocrmypdf_version": "16.0.4",\n  "source_repository": "%s",\n  "source_ref": "%s"\n}\n' \
+printf '{\n  "base_image": "%s",\n  "ocrmypdf_version": "16.0.4",\n  "pikepdf_version": "8.15.1",\n  "source_repository": "%s",\n  "source_ref": "%s"\n}\n' \
     "$base_image" "$SOURCE_REPOSITORY" "$source_ref" > "$output_dir/BUILD_SOURCE.json"
 
 "$script_dir/verify_space_bundle.sh" "$output_dir"

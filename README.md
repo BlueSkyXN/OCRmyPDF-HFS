@@ -47,7 +47,7 @@ docker build -t ocrmypdf-hfs .
 docker run --rm -p 8000:8000 ocrmypdf-hfs
 ```
 
-`PYTHON_BASE_IMAGE` 和 `OCRMY_PDF_VERSION` 是 Dockerfile 中可审查的构建输入。手工发布 workflow 会解析基础镜像 tag 的 registry digest，将 digest 与固定 OCRmyPDF `16.0.4` 一并写入 `BUILD_SOURCE.json`；导出器拒绝浮动的 wrapper 输入。之后必须用下述 OCR 回归确认该组合符合旧服务基线；不得把未验证的基础镜像、语言包或 OCRmyPDF 版本直接切到生产 Space。
+`PYTHON_BASE_IMAGE`、`OCRMY_PDF_VERSION` 和 `PIKEPDF_VERSION` 是 Dockerfile 中可审查的构建输入。手工发布 workflow 会解析基础镜像 tag 的 registry digest，将 digest、固定 OCRmyPDF `16.0.4` 与兼容的 pikepdf `8.15.1` 一并写入 `BUILD_SOURCE.json`；导出器拒绝浮动的 wrapper 输入。pikepdf 不能只依赖 OCRmyPDF 的开放下界：pikepdf 10 已移除 OCRmyPDF 16.0.4 在输出校验中使用的 `Pdf.check()`。之后必须用下述 OCR 回归确认该组合符合旧服务基线；不得把未验证的基础镜像、语言包或 OCRmyPDF/pikepdf 版本直接切到生产 Space。
 
 ## HFS v2 source wrapper
 
