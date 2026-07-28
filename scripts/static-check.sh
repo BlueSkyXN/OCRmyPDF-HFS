@@ -60,6 +60,7 @@ for fragment in (
     "docker buildx imagetools inspect",
     "--require-private",
     "confirm_deploy == 'deploy'",
+    '[[ "${SOURCE_REF}" =~ ^[0-9a-f]{40}$ ]]',
 ):
     if fragment not in workflow:
         raise SystemExit(f"deploy workflow misses {fragment!r}")
