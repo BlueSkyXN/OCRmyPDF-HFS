@@ -1,0 +1,37 @@
+name: Verify HFS OCR wrapper
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-wrapper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run static contracts
+        run: scripts/static-check.sh
+      - name: Resolve base-image digest and export exact-head wrapper
+        run: |
+          set -euo pipefail
+          base_tag=$(sed -n 's/^ARG PYTHON_BASE_IMAGE=//p' cloud/hfs/Dockerfile)
+          digest=$(docker buildx imagetools inspect "$base_tag" --format '{{.Manifest.Digest}}')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          cloud/hfs/export_space_bundle.sh \
+            --source-ref "$GITHUB_SHA" \
+            --base-image "$base_tag@$digest" \
+            --manifest hfs-dev.candidate.toml \
+            --output "$RUNNER_TEMP/ocrmypdf-hfs-space"
+          cloud/hfs/verify_space_bundle.sh "$RUNNER_TEMP/ocrmypdf-hfs-space"
+      - name: Build exported wrapper
+        run: docker build --tag ocrmypdf-hfs:pr "$RUNNER_TEMP/ocrmypdf-hfs-space"

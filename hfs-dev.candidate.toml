@@ -1,0 +1,11 @@
+standard = "2.0"
+project = "ocrmypdf-hfs"
+space = "BlueSkyXN/OCRmyPDF-HFS-v2-candidate"
+sovereignty = "sovereign"
+lane = "source"
+version_source = "commit"
+
+# These credentials remain local or in GitHub Actions and are never Space settings.
+local_only = ["HF_TOKEN", "GH_TOKEN"]
+secrets = []
+variables = []
