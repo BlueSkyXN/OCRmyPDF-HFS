@@ -263,8 +263,9 @@ async def run_ocr_on_pdf(
         if force_ocr:
             cmd.append('--force-ocr')
         else:
-            # 默认跳过已有文本的页面
-            cmd.append('--skip-text')
+            # Debian bookworm 的 Ghostscript 10.0.0 被 OCRmyPDF 明确禁止用于
+            # skip-text + PDF/A 转换；保持文本页面时改用普通 PDF 输出以避免损坏。
+            cmd.extend(['--skip-text', '--output-type', 'pdf'])
             
         if deskew:
             cmd.append('--deskew')

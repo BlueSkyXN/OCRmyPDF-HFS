@@ -1,6 +1,6 @@
 # Local development image. HFS deployments use cloud/hfs/Dockerfile, which checks out
 # the immutable application source commit recorded in BUILD_SOURCE.json.
-ARG PYTHON_BASE_IMAGE=python:3.11.9-slim-bookworm
+ARG PYTHON_BASE_IMAGE=python:3.11.13-slim-trixie
 FROM ${PYTHON_BASE_IMAGE}
 
 ARG OCRMY_PDF_VERSION=16.0.4
@@ -11,7 +11,7 @@ ENV PORT=8000 \
 WORKDIR /app
 
 # OCRmyPDF needs these system tools for PDF conversion, OCR, language data, and
-# the supported optimization path. Debian bookworm does not ship jbig2enc;
+# the supported optimization path. Debian does not ship jbig2enc here;
 # OCRmyPDF treats it as an optional lossy monochrome optimizer, so the image
 # keeps the available pngquant optimization without pretending jbig2enc is
 # installable from the pinned base distribution.

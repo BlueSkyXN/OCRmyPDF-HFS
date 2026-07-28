@@ -14,6 +14,7 @@ bash -n \
 PYTHONDONTWRITEBYTECODE=1 python3 - \
   main.py \
   test/test.py \
+  test/generate_corpus.py \
   cloud/hfs/sync_space_bundle.py \
   scripts/hf_space_sync.py <<'PY'
 import sys
@@ -67,11 +68,16 @@ for forbidden in ("allow-space-tree-prune", "CommitOperationDelete", "git push",
         raise SystemExit(f"deployment must not contain {forbidden!r}")
 
 test_contract = Path("test/test.py").read_text(encoding="utf-8")
-for fragment in ("--require-pdfa", "--max-output-bytes", "--max-seconds", "--reject-fixture"):
+for fragment in ("--require-pdfa", "--max-output-bytes", "--max-seconds", "--reject-fixture", "--expect-text", "X-HF-Authorization"):
     if fragment not in test_contract:
         raise SystemExit(f"OCR corpus contract misses {fragment!r}")
+for fixture in ("english.pdf", "chinese.pdf", "mixed.pdf", "existing-text.pdf", "deskew.pdf", "corrupt.pdf"):
+    if not (Path("test/fixtures") / fixture).is_file():
+        raise SystemExit(f"fixed OCR corpus misses {fixture}")
 if not re.search(r'"build": build', Path("main.py").read_text(encoding="utf-8")):
     raise SystemExit("health response must expose additive build provenance")
+if "cmd.extend(['--skip-text', '--output-type', 'pdf'])" not in Path("main.py").read_text(encoding="utf-8"):
+    raise SystemExit("skip-text must avoid the known Ghostscript 10.0.0 PDF/A corruption path")
 PY
 
 git diff --check

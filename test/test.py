@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import http.client
 import mimetypes
+import os
 import secrets
 import tempfile
 import time
@@ -40,6 +41,13 @@ def parse_fixture(value: str) -> tuple[str, Path]:
     if not path.is_file():
         raise argparse.ArgumentTypeError(f"fixture does not exist: {path}")
     return name, path
+
+
+def parse_expected_text(value: str) -> tuple[str, str]:
+    name, separator, expected = value.partition("=")
+    if not separator or not name or not expected:
+        raise argparse.ArgumentTypeError("expected text must use NAME=TEXT")
+    return name, expected
 
 
 def connection_for(url: str) -> tuple[http.client.HTTPConnection, str]:
@@ -107,6 +115,9 @@ def request_ocr(args: argparse.Namespace, fixture: Path) -> tuple[int, bytes, fl
         connection.putheader("Content-Type", f"multipart/form-data; boundary={boundary}")
         connection.putheader("Content-Length", str(content_length))
         connection.putheader("Accept", "application/pdf, application/json")
+        hf_token = os.getenv("HF_TOKEN", "")
+        if hf_token:
+            connection.putheader("X-HF-Authorization", f"Bearer {hf_token}")
         connection.endheaders()
         connection.send(prefix)
         for chunk in stream_file(fixture):
@@ -144,6 +155,9 @@ def verify_success(name: str, fixture: Path, body: bytes, elapsed: float, args: 
         output_text = "".join(page.extract_text() or "" for page in output_reader.pages).strip()
         if not output_text:
             raise RuntimeError(f"{name}: output has no extractable text layer")
+        expected = dict(args.expect_text).get(name)
+        if expected and "".join(expected.split()).casefold() not in "".join(output_text.split()).casefold():
+            raise RuntimeError(f"{name}: expected OCR text was not found in the output text layer")
 
     print(
         f"PASS {name}: pages={len(input_reader.pages)}, output_bytes={len(body)}, "
@@ -155,6 +169,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--api-url", required=True, help="explicit local or candidate /ocr/ endpoint")
     parser.add_argument("--fixture", action="append", type=parse_fixture, required=True, metavar="NAME=PATH")
+    parser.add_argument("--expect-text", action="append", type=parse_expected_text, default=[], metavar="NAME=TEXT")
     parser.add_argument("--reject-fixture", action="append", type=Path, default=[], metavar="PATH")
     parser.add_argument("--language", default="eng+chi_sim", choices=["eng", "chi_sim", "eng+chi_sim"])
     parser.add_argument("--force-ocr", action="store_true")

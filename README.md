@@ -40,7 +40,7 @@ curl -X POST "https://your-space-name.hf.space/ocr/" \
 
 ## Docker 依赖与本地运行
 
-根 `Dockerfile` 适用于本地直接构建，显式安装 Ghostscript、qpdf、Tesseract（含 `eng` 与 `chi_sim`）、unpaper、pngquant 和固定的 OCRmyPDF PyPI 版本；它不再继承 `jbarlow83/ocrmypdf-alpine:latest` 业务镜像。Debian bookworm 不提供可安装的 `jbig2enc` 包，因此不宣称支持该可选的有损单色图像优化器；OCR、PDF/A 和其余优化路径不依赖它。
+根 `Dockerfile` 适用于本地直接构建，显式安装 Ghostscript、qpdf、Tesseract（含 `eng` 与 `chi_sim`）、unpaper、pngquant 和固定的 OCRmyPDF PyPI 版本；它不再继承 `jbarlow83/ocrmypdf-alpine:latest` 业务镜像。基础镜像使用 Debian trixie，以获得不受 OCRmyPDF 禁用的 Ghostscript 10.05 系列；仓库仍不宣称支持未安装的可选 `jbig2enc` 有损单色优化器。
 
 ```bash
 docker build -t ocrmypdf-hfs .
