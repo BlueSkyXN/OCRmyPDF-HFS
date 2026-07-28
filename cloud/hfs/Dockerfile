@@ -4,6 +4,7 @@ ARG PYTHON_BASE_IMAGE=python:3.11.13-slim-trixie
 FROM ${PYTHON_BASE_IMAGE}
 
 ARG OCRMY_PDF_VERSION=16.0.4
+ARG PIKEPDF_VERSION=8.15.1
 ARG SOURCE_REPOSITORY=https://github.com/BlueSkyXN/OCRmyPDF-HFS.git
 ENV PORT=8000 \
     PYTHONUNBUFFERED=1 \
@@ -42,6 +43,7 @@ RUN set -eux; \
     test -f /opt/source/main.py; \
     test -f /opt/source/requirements.txt; \
     pip install --no-cache-dir --requirement /opt/source/requirements.txt \
+        "pikepdf==${PIKEPDF_VERSION}" \
         "ocrmypdf==${OCRMY_PDF_VERSION}"; \
     install -m 0644 /opt/source/main.py /app/main.py; \
     rm -rf /opt/source
