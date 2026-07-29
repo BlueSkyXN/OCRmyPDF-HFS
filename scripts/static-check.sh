@@ -24,6 +24,8 @@ for name in sys.argv[1:]:
     compile(Path(name).read_text(encoding="utf-8"), name, "exec")
 PY
 
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_*.py'
+
 for local_source in .env local/hfs-targets/candidate.env; do
   git check-ignore --quiet --no-index -- "$local_source" || {
     printf 'HFS local fact source must be Git ignored: %s\n' "$local_source" >&2
