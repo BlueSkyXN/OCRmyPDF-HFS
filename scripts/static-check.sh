@@ -24,6 +24,13 @@ for name in sys.argv[1:]:
     compile(Path(name).read_text(encoding="utf-8"), name, "exec")
 PY
 
+for local_source in .env local/hfs-targets/candidate.env; do
+  git check-ignore --quiet --no-index -- "$local_source" || {
+    printf 'HFS local fact source must be Git ignored: %s\n' "$local_source" >&2
+    exit 1
+  }
+done
+
 python3 - <<'PY'
 import re
 import tomllib
@@ -32,12 +39,15 @@ from pathlib import Path
 production = tomllib.loads(Path("hfs-dev.toml").read_text(encoding="utf-8"))
 candidate = tomllib.loads(Path("hfs-dev.candidate.toml").read_text(encoding="utf-8"))
 expected = {
-    "standard": "2.0",
+    "standard": "2.1",
     "project": "ocrmypdf-hfs",
     "space": "BlueSkyXN/OCRmyPDF-HFS",
+    "project_class": "preview",
+    "target_role": "primary",
     "sovereignty": "sovereign",
     "lane": "source",
     "version_source": "commit",
+    "env_file": ".env",
 }
 for key, value in expected.items():
     if production.get(key) != value:
@@ -46,11 +56,17 @@ if production.get("local_only") != ["HF_TOKEN", "GH_TOKEN"]:
     raise SystemExit("HFS control credentials must be local_only")
 if production.get("secrets") != [] or production.get("variables") != []:
     raise SystemExit("OCRmyPDF currently has no Space Settings")
+if production.get("secret_files") != []:
+    raise SystemExit("OCRmyPDF must not register structured secret files")
 if candidate.get("space") != "BlueSkyXN/OCRmyPDF-HFS-v2-candidate":
     raise SystemExit("candidate manifest has the wrong Space id")
+if candidate.get("project_class") != "preview" or candidate.get("target_role") != "candidate":
+    raise SystemExit("candidate manifest must remain an optional preview candidate")
+if candidate.get("env_file") != "local/hfs-targets/candidate.env":
+    raise SystemExit("candidate manifest must use its isolated local plaintext ledger")
 for key in sorted(set(production) | set(candidate)):
-    if key != "space" and production.get(key) != candidate.get(key):
-        raise SystemExit(f"candidate manifest differs from production at {key}")
+    if key not in {"space", "target_role", "env_file"} and production.get(key) != candidate.get(key):
+        raise SystemExit(f"candidate manifest differs from primary at {key}")
 
 workflow = Path(".github/workflows/sync-to-hf-space.yml").read_text(encoding="utf-8")
 for fragment in (

@@ -47,9 +47,9 @@ docker build -t ocrmypdf-hfs .
 docker run --rm -p 8000:8000 ocrmypdf-hfs
 ```
 
-`PYTHON_BASE_IMAGE`、`OCRMY_PDF_VERSION` 和 `PIKEPDF_VERSION` 是 Dockerfile 中可审查的构建输入。手工发布 workflow 会解析基础镜像 tag 的 registry digest，将 digest、固定 OCRmyPDF `16.0.4` 与兼容的 pikepdf `8.15.1` 一并写入 `BUILD_SOURCE.json`；导出器拒绝浮动的 wrapper 输入。pikepdf 不能只依赖 OCRmyPDF 的开放下界：pikepdf 10 已移除 OCRmyPDF 16.0.4 在输出校验中使用的 `Pdf.check()`。之后必须用下述 OCR 回归确认该组合符合旧服务基线；不得把未验证的基础镜像、语言包或 OCRmyPDF/pikepdf 版本直接切到生产 Space。
+`PYTHON_BASE_IMAGE`、`OCRMY_PDF_VERSION` 和 `PIKEPDF_VERSION` 是 Dockerfile 中可审查的构建输入。手工发布 workflow 会解析基础镜像 tag 的 registry digest，将 digest、固定 OCRmyPDF `16.0.4` 与兼容的 pikepdf `8.15.1` 一并写入 `BUILD_SOURCE.json`；导出器拒绝浮动的 wrapper 输入。pikepdf 不能只依赖 OCRmyPDF 的开放下界：pikepdf 10 已移除 OCRmyPDF 16.0.4 在输出校验中使用的 `Pdf.check()`。之后必须用下述 OCR 回归确认该组合符合旧服务基线；不得把未验证的基础镜像、语言包或 OCRmyPDF/pikepdf 版本直接切到 canonical preview Space。
 
-## HFS v2 source wrapper
+## HFS v2.1 Preview source wrapper
 
 Hugging Face Space 不再以仓库根目录作为产品副本。`cloud/hfs/` 是薄 wrapper，其导出物仅包含：
 
@@ -64,20 +64,33 @@ hfs-dev.toml
 
 导出器 `cloud/hfs/export_space_bundle.sh` 只接受已检出的完整 40 位 Git commit，并拒绝脏工作树、暂存修改或未跟踪输入。它生成 `BUILD_SOURCE.json`，Space Docker build 从公开 GitHub 仓检出该 commit 并再次断言 `HEAD` 相同。检出、依赖安装、语言包或启动预检失败时均失败退出，不会回退到旧业务镜像、其他 Git ref 或运行时下载路径。
 
-`hfs-dev.toml` 是 HFS v2 的最小关系登记：该项目是 `sovereign`、`source`、`commit` 车道。它只登记键名；`.env` 和 `local/` 均不会进入 Git、Docker context 或 Space bundle。`.env.example` 仅为本地部署控制面的空模板，`HF_TOKEN` 不会作为 Space Secret 或 Variable 写入。
+`hfs-dev.toml` 是 HFS v2.1 的最小关系登记：该项目是 `preview`、`primary`、
+`sovereign`、`source`、`commit` 车道。日常 Preview 变更允许直接更新 canonical Space；
+candidate 只用于高风险变更的可选隔离验证，不是常规前置门禁。它只登记键名和本地来源路径；
+`.env` 和 `local/` 均不会进入 Git、Docker context 或 Space bundle。`.env.example` 仅为本地
+部署控制面的空模板，`HF_TOKEN` 不会作为 Space Secret 或 Variable 写入。
 
 ## 受控部署
 
 `.github/workflows/sync-to-hf-space.yml` 仅支持 `workflow_dispatch`。操作者必须提供完整 source commit，并明确选择 `deploy` 才会产生远端写入。工作流通过 Hugging Face HTTP API 创建受控 commit，不使用含凭据的 Git URL，也不 force-push。
 
-首次将旧的全仓 Space 迁为 wrapper 时，发布脚本会先读取远端 tree。发现 wrapper allowlist 之外的文件时拒绝写入；旧 tree 清理必须走独立 owner-approved 程序，不能与部署绑定。写后脚本会重新读取 Space tree、revision 和每个 wrapper 文件的精确字节；revision 或内容不一致均失败。candidate 必须预先创建为 private。该工作流不管理 Space Settings、bucket、挂载、重启或清理旧资源。
+首次将旧的全仓 Space 迁为 wrapper 时，发布脚本会先读取远端 tree。发现 wrapper allowlist 之外的文件时拒绝写入；旧 tree 清理必须走独立 owner-approved 程序，不能与部署绑定。写后脚本会重新读取 Space tree、revision 和每个 wrapper 文件的精确字节；revision 或内容不一致均失败。仅在选择可选 candidate 时，该 Space 才必须预先创建为 private。该工作流不管理 Space Settings、bucket、挂载、重启或清理旧资源。
 
-本项目当前没有 Space Secret/Variable，但仍保留本地事实源的对账入口：
+本项目当前没有应用 Space Secret/Variable，但仍保留本地明文事实源的对账入口。canonical
+使用 `.env`；脚本从 manifest 固定路径读取：
 
 ```bash
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
-python3 scripts/hf_space_sync.py push --manifest hfs-dev.candidate.toml --env-file .env
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.toml
+python3 scripts/hf_space_sync.py push --manifest hfs-dev.toml
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.toml
+```
+
+可选 candidate 使用独立的 `local/hfs-targets/candidate.env`：
+
+```bash
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml
+python3 scripts/hf_space_sync.py push --manifest hfs-dev.candidate.toml
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml
 ```
 
 最后一次 `diff` 是 readback；不得在清理授权前使用 `--prune --yes`。
