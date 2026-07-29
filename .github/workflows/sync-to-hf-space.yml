@@ -74,7 +74,7 @@ jobs:
           SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check "huggingface_hub==1.5.0" "click==8.3.1"
+          python -m pip install --disable-pip-version-check "huggingface_hub==1.5.0" "click==8.3.3"
           python -m huggingface_hub.cli.hf version
           python -m huggingface_hub.cli.hf --help >/dev/null
           SPACE_ID=$(python -c 'import tomllib; print(tomllib.load(open("'"$HFS_MANIFEST"'", "rb"))["space"])')

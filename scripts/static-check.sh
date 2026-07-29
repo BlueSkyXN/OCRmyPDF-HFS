@@ -62,7 +62,7 @@ for fragment in (
     "confirm_deploy == 'deploy'",
     '[[ "${SOURCE_REF}" =~ ^[0-9a-f]{40}$ ]]',
     "huggingface_hub==1.5.0",
-    "click==8.3.1",
+    "click==8.3.3",
     "python -m huggingface_hub.cli.hf version",
     "python -m huggingface_hub.cli.hf --help",
 ):
