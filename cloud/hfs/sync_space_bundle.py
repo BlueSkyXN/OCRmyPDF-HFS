@@ -130,7 +130,7 @@ def main() -> int:
     api = HfApi(token=token)
     info_before = api.repo_info(repo_id=args.space, repo_type="space")
     if args.require_private and not info_before.private:
-        fail("candidate Space must be private")
+        fail("target Space must be private")
     remote_before = remote_file_paths(api, args.space)
     unexpected = sorted(remote_before - ALLOWED_REMOTE_FILES)
     if unexpected:

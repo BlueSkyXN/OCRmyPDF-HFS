@@ -32,6 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: hfs-production
     env:
+      FORMAL_SPACE: BlueSkyXN/OCRmyPDF-HFS
       HFS_TARGET: ${{ inputs.target }}
       HFS_MANIFEST: ${{ inputs.target == 'candidate' && 'hfs-dev.candidate.toml' || 'hfs-dev.toml' }}
     steps:
@@ -78,13 +79,22 @@ jobs:
           python -m huggingface_hub.cli.hf version
           python -m huggingface_hub.cli.hf --help >/dev/null
           SPACE_ID=$(python -c 'import tomllib; print(tomllib.load(open("'"$HFS_MANIFEST"'", "rb"))["space"])')
-          private_flag=()
-          if [ "$HFS_TARGET" = candidate ]; then private_flag+=(--require-private); fi
+          if [ "$HFS_TARGET" = production ] && [ "$SPACE_ID" != "$FORMAL_SPACE" ]; then
+            printf '%s\n' 'production manifest must select the canonical OCRmyPDF-HFS Space.' >&2
+            exit 1
+          fi
+          if [ "$HFS_TARGET" = production ]; then
+            test "$GITHUB_REF" = "refs/heads/main"
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+            test "$SOURCE_REF" = "$GITHUB_SHA"
+            test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          fi
           PYTHONDONTWRITEBYTECODE=1 python cloud/hfs/sync_space_bundle.py \
             --bundle "${RUNNER_TEMP}/ocrmypdf-hfs-space" \
             --space "$SPACE_ID" \
             --source-ref "${SOURCE_REF}" \
-            --apply "${private_flag[@]}"
+            --apply --require-private
 
       - name: Record follow-up runtime gate
         run: |

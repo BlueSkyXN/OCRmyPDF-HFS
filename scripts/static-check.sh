@@ -58,6 +58,7 @@ for fragment in (
     "target:",
     "HFS_MANIFEST:",
     "docker buildx imagetools inspect",
+    "FORMAL_SPACE: BlueSkyXN/OCRmyPDF-HFS",
     "--require-private",
     "confirm_deploy == 'deploy'",
     '[[ "${SOURCE_REF}" =~ ^[0-9a-f]{40}$ ]]',
@@ -68,6 +69,37 @@ for fragment in (
 ):
     if fragment not in workflow:
         raise SystemExit(f"deploy workflow misses {fragment!r}")
+
+publish_call = 'PYTHONDONTWRITEBYTECODE=1 python cloud/hfs/sync_space_bundle.py'
+publish_offset = workflow.index(publish_call)
+required_before_publish = (
+    'if [ "$HFS_TARGET" = production ] && [ "$SPACE_ID" != "$FORMAL_SPACE" ]; then',
+    'if [ "$HFS_TARGET" = production ]; then',
+    'test "$GITHUB_REF" = "refs/heads/main"',
+    'git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main',
+    'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+    'test "$SOURCE_REF" = "$GITHUB_SHA"',
+    'test "$(git rev-parse origin/main)" = "$GITHUB_SHA"',
+)
+for fragment in required_before_publish:
+    offset = workflow.index(fragment)
+    if offset >= publish_offset:
+        raise SystemExit(f"formal deploy gate must precede the publish helper: {fragment}")
+if '--apply --require-private' not in workflow[publish_offset:]:
+    raise SystemExit("candidate and production publishes must both require a private target")
+production_gate = workflow.index('if [ "$HFS_TARGET" = production ]; then')
+fetch_gate = workflow.index('git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main')
+if not production_gate < fetch_gate < publish_offset:
+    raise SystemExit("fresh origin/main fetch must be production-only and immediately precede publish")
+
+sync_source = Path("cloud/hfs/sync_space_bundle.py").read_text(encoding="utf-8")
+upload_offset = sync_source.index("commit = api.create_commit(")
+for fragment in (
+    'fail("target Space must be private")',
+    "remote Space contains non-wrapper files",
+):
+    if sync_source.index(fragment) >= upload_offset:
+        raise SystemExit(f"Space gate must fail before any HF upload: {fragment}")
 for forbidden in ("allow-space-tree-prune", "CommitOperationDelete", "git push", "--force"):
     if forbidden in workflow or forbidden in Path("cloud/hfs/sync_space_bundle.py").read_text(encoding="utf-8"):
         raise SystemExit(f"deployment must not contain {forbidden!r}")
