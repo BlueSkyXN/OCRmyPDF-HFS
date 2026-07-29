@@ -74,7 +74,9 @@ jobs:
           SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check "huggingface_hub==0.32.4"
+          python -m pip install --disable-pip-version-check "huggingface_hub==1.5.0" "click==8.3.3"
+          python -m huggingface_hub.cli.hf version
+          python -m huggingface_hub.cli.hf --help >/dev/null
           SPACE_ID=$(python -c 'import tomllib; print(tomllib.load(open("'"$HFS_MANIFEST"'", "rb"))["space"])')
           private_flag=()
           if [ "$HFS_TARGET" = candidate ]; then private_flag+=(--require-private); fi

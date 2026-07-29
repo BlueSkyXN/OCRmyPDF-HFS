@@ -84,25 +84,33 @@ python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-fi
 
 ## OCR smoke contract
 
-Docker build、Space build 和网络部署本身不能证明 OCR 输出等价。发布前应使用无敏感、合法分发的固定 corpus，至少覆盖英文、简体中文、混排、已有文本、倾斜、损坏 PDF 和加密 PDF。运行真实服务后执行：
+Docker build、Space build 和网络部署本身不能证明 OCR 输出等价。发布前应使用无敏感、合法分发的固定 corpus，至少覆盖英文、简体中文、混排、已有文本、倾斜、损坏 PDF 和加密 PDF。默认请求与强制 OCR 的输出合约不同，必须分开执行。
+
+默认路径会让服务调用 `--skip-text --output-type pdf`。已有文本样本应返回普通 PDF，保留页数和原有可提取文本；这条 smoke 不要求 PDF/A：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 test/test.py \
   --api-url http://127.0.0.1:8000/ocr/ \
-  --fixture english=fixtures/english.pdf \
-  --fixture chinese=fixtures/chinese.pdf \
-  --fixture mixed=fixtures/mixed.pdf \
-  --fixture existing-text=fixtures/existing-text.pdf \
-  --fixture deskew=fixtures/deskew.pdf \
-  --deskew \
-  --require-pdfa \
-  --max-output-bytes <approved-byte-limit> \
-  --max-seconds <approved-seconds> \
-  --reject-fixture fixtures/corrupt.pdf \
-  --reject-fixture fixtures/encrypted.pdf
+  --fixture existing-text=test/fixtures/existing-text.pdf \
+  --expect-text 'existing-text=HFS EXISTING TEXT 20260728'
 ```
 
-该合约验证成功结果是可读 PDF、页数未意外变化且有可提取文本层；拒绝样本必须返回 4xx/5xx 而不产生可下载的半成品。分别运行 `force_ocr`、默认 `skip-text` 和各 `optimize` 等级场景，并记录耗时、输出大小、文本质量和 PDF/A/兼容性结果，与迁移前基线及 owner 批准的容差比较。
+PDF/A 路径必须显式请求 `force_ocr=true`，并由 smoke 同时启用 `--force-ocr --require-pdfa`。固定 corpus 覆盖英文、简体中文、混排和倾斜页面：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 test/test.py \
+  --api-url http://127.0.0.1:8000/ocr/ \
+  --fixture english=test/fixtures/english.pdf \
+  --fixture chinese=test/fixtures/chinese.pdf \
+  --fixture mixed=test/fixtures/mixed.pdf \
+  --fixture deskew=test/fixtures/deskew.pdf \
+  --force-ocr \
+  --deskew \
+  --require-pdfa \
+  --reject-fixture test/fixtures/corrupt.pdf
+```
+
+两条 smoke 都验证 HTTP 成功结果是可读 PDF、页数未意外变化且有可提取文本层；`existing-text` 还核对原有文本仍可提取。`--require-pdfa` 只验证强制 OCR 路径的 PDF/A 标识。拒绝样本必须返回 4xx/5xx 而不产生可下载的半成品；加密 PDF 需使用另行审查的合法 fixture 验证。只有 owner 批准具体数值后才附加 `--max-output-bytes` 和 `--max-seconds`。各 `optimize` 等级应分别运行，并记录耗时、输出大小、文本质量和 PDF/A/兼容性结果，与迁移前基线及批准的容差比较。
 
 ## 发布前 owner 门禁
 

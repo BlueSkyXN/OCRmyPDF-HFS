@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 """Run a real, local OCRmyPDF API smoke contract against a supplied PDF corpus.
 
-The script never selects a hosted endpoint or fixture by default. Provide an explicit
-local/candidate URL and harmless fixture paths, for example:
+The script never selects a hosted endpoint or fixture by default. The default API
+path uses --skip-text and ordinary PDF output, so validate an existing-text fixture
+without requiring PDF/A:
 
   PYTHONDONTWRITEBYTECODE=1 python3 test/test.py \\
-    --api-url http://127.0.0.1:8000 \\
-    --fixture english=fixtures/english.pdf \\
-    --fixture chinese=fixtures/chinese.pdf \\
-    --fixture mixed=fixtures/mixed.pdf \\
-    --fixture existing-text=fixtures/existing-text.pdf \\
-    --fixture deskew=fixtures/deskew.pdf --deskew \\
-    --reject-fixture fixtures/corrupt.pdf
+    --api-url http://127.0.0.1:8000/ocr/ \\
+    --fixture existing-text=test/fixtures/existing-text.pdf \\
+    --expect-text 'existing-text=HFS EXISTING TEXT 20260728'
+
+Validate PDF/A separately by forcing OCR:
+
+  PYTHONDONTWRITEBYTECODE=1 python3 test/test.py \\
+    --api-url http://127.0.0.1:8000/ocr/ \\
+    --fixture english=test/fixtures/english.pdf \\
+    --fixture chinese=test/fixtures/chinese.pdf \\
+    --fixture mixed=test/fixtures/mixed.pdf \\
+    --fixture deskew=test/fixtures/deskew.pdf \\
+    --force-ocr --deskew --require-pdfa \\
+    --reject-fixture test/fixtures/corrupt.pdf
 
 It verifies each successful output is a readable PDF, retains its page count, and has
 a text layer. Record output size and duration in the release evidence; set optional
@@ -172,13 +180,15 @@ def main() -> int:
     parser.add_argument("--expect-text", action="append", type=parse_expected_text, default=[], metavar="NAME=TEXT")
     parser.add_argument("--reject-fixture", action="append", type=Path, default=[], metavar="PATH")
     parser.add_argument("--language", default="eng+chi_sim", choices=["eng", "chi_sim", "eng+chi_sim"])
-    parser.add_argument("--force-ocr", action="store_true")
+    parser.add_argument("--force-ocr", action="store_true", help="request force_ocr=true; required for PDF/A smoke")
     parser.add_argument("--deskew", action="store_true")
     parser.add_argument("--optimize", type=int, choices=range(4), default=0)
     parser.add_argument("--max-seconds", type=float)
     parser.add_argument("--max-output-bytes", type=int)
-    parser.add_argument("--require-pdfa", action="store_true")
+    parser.add_argument("--require-pdfa", action="store_true", help="require PDF/A metadata in force-OCR output")
     args = parser.parse_args()
+    if args.require_pdfa and not args.force_ocr:
+        parser.error("--require-pdfa requires --force-ocr; default requests use --skip-text --output-type pdf")
 
     for name, fixture in args.fixture:
         status, body, elapsed = request_ocr(args, fixture)
