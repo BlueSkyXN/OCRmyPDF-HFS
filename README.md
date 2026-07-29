@@ -70,7 +70,7 @@ hfs-dev.toml
 
 `.github/workflows/sync-to-hf-space.yml` 仅支持 `workflow_dispatch`。操作者必须提供完整 source commit，并明确选择 `deploy` 才会产生远端写入。工作流通过 Hugging Face HTTP API 创建受控 commit，不使用含凭据的 Git URL，也不 force-push。
 
-首次将旧的全仓 Space 迁为 wrapper 时，发布脚本会先读取远端 tree。发现 wrapper allowlist 之外的文件时拒绝写入；旧 tree 清理必须走独立 owner-approved 程序，不能与部署绑定。写后脚本会重新读取 Space tree、revision 和每个 wrapper 文件的精确字节；revision 或内容不一致均失败。candidate 必须预先创建为 private。该工作流不管理 Space Settings、bucket、挂载、重启或清理旧资源。
+首次将旧的全仓 Space 迁为 wrapper 时，发布脚本会先读取远端 tree。发现 wrapper allowlist 之外的文件时拒绝写入；旧 tree 清理必须走独立 owner-approved 程序，不能与部署绑定。写后脚本会重新读取 Space tree、revision 和每个 wrapper 文件的精确字节；revision 或内容不一致均失败。candidate 与 production 都必须预先创建为 private，production target 必须显式等于 canonical `BlueSkyXN/OCRmyPDF-HFS`。production 上传紧前会重新 fetch `origin/main`，并要求 workflow ref 为 `refs/heads/main`，checkout `HEAD`、`GITHUB_SHA`、显式 `source_ref` 与最新 `origin/main` 完全相等；candidate 保留显式 immutable `source_ref` 的既有语义。canonical target、private visibility、thin-wrapper tree 和 production main provenance 等 gate 全部先于首次 HF upload。该工作流不管理 Space Settings、bucket、挂载、重启或清理旧资源。
 
 本项目当前没有 Space Secret/Variable，但仍保留本地事实源的对账入口：
 
