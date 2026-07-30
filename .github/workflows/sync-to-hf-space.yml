@@ -75,9 +75,10 @@ jobs:
           SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check "huggingface_hub==1.5.0" "click==8.3.3"
+          python -m pip install --disable-pip-version-check "huggingface_hub==1.25.1" "click==8.4.2"
           python -m huggingface_hub.cli.hf version
           python -m huggingface_hub.cli.hf --help >/dev/null
+          python -m huggingface_hub.cli.hf repos settings --help | grep -- --protected
           SPACE_ID=$(python -c 'import tomllib; print(tomllib.load(open("'"$HFS_MANIFEST"'", "rb"))["space"])')
           if [ "$HFS_TARGET" = production ] && [ "$SPACE_ID" != "$FORMAL_SPACE" ]; then
             printf '%s\n' 'production manifest must select the canonical OCRmyPDF-HFS Space.' >&2
