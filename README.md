@@ -74,7 +74,7 @@ candidate 只用于高风险变更的可选隔离验证，不是常规前置门�
 
 `.github/workflows/sync-to-hf-space.yml` 仅支持 `workflow_dispatch`。操作者必须提供完整 source commit，并明确选择 `deploy` 才会产生远端写入。工作流通过 Hugging Face HTTP API 创建受控 commit，不使用含凭据的 Git URL，也不 force-push。
 
-首次将旧的全仓 Space 迁为 wrapper 时，发布脚本会先读取远端 tree。发现 wrapper allowlist 之外的文件时拒绝写入；旧 tree 清理必须走独立 owner-approved 程序，不能与部署绑定。写后脚本会重新读取 Space tree、revision 和每个 wrapper 文件的精确字节；revision 或内容不一致均失败。仅在选择可选 candidate 时，该 Space 才必须预先创建为 private。该工作流不管理 Space Settings、bucket、挂载、重启或清理旧资源。
+首次将旧的全仓 Space 迁为 wrapper 时，发布脚本会先读取远端 tree。发现 wrapper allowlist 之外的文件时拒绝写入；旧 tree 清理必须走独立 owner-approved 程序，不能与部署绑定。写后脚本会重新读取 Space tree、revision 和每个 wrapper 文件的精确字节；revision 或内容不一致均失败。candidate 与 workflow 中名为 `production` 的 canonical Preview target 都必须预先存在且保持非公开；manifest 进一步要求 Space 为 Protected。canonical target 必须显式等于 `BlueSkyXN/OCRmyPDF-HFS`。canonical 上传紧前会重新 fetch `origin/main`，并要求 workflow ref 为 `refs/heads/main`，checkout `HEAD`、`GITHUB_SHA`、显式 `source_ref` 与最新 `origin/main` 完全相等；candidate 保留显式 immutable `source_ref` 的既有语义。canonical target、non-public readback、thin-wrapper tree 和 exact-main provenance 等 gate 全部先于首次 HF upload。该工作流不管理 Space Settings、bucket、挂载、重启或清理旧资源。
 
 本项目当前没有应用 Space Secret/Variable，但仍保留本地明文事实源的对账入口。canonical
 使用 `.env`；脚本从 manifest 固定路径读取：
@@ -97,25 +97,33 @@ python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml
 
 ## OCR smoke contract
 
-Docker build、Space build 和网络部署本身不能证明 OCR 输出等价。发布前应使用无敏感、合法分发的固定 corpus，至少覆盖英文、简体中文、混排、已有文本、倾斜、损坏 PDF 和加密 PDF。运行真实服务后执行：
+Docker build、Space build 和网络部署本身不能证明 OCR 输出等价。发布前应使用无敏感、合法分发的固定 corpus，至少覆盖英文、简体中文、混排、已有文本、倾斜、损坏 PDF 和加密 PDF。默认请求与强制 OCR 的输出合约不同，必须分开执行。
+
+默认路径会让服务调用 `--skip-text --output-type pdf`。已有文本样本应返回普通 PDF，保留页数和原有可提取文本；这条 smoke 不要求 PDF/A：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 test/test.py \
   --api-url http://127.0.0.1:8000/ocr/ \
-  --fixture english=fixtures/english.pdf \
-  --fixture chinese=fixtures/chinese.pdf \
-  --fixture mixed=fixtures/mixed.pdf \
-  --fixture existing-text=fixtures/existing-text.pdf \
-  --fixture deskew=fixtures/deskew.pdf \
-  --deskew \
-  --require-pdfa \
-  --max-output-bytes <approved-byte-limit> \
-  --max-seconds <approved-seconds> \
-  --reject-fixture fixtures/corrupt.pdf \
-  --reject-fixture fixtures/encrypted.pdf
+  --fixture existing-text=test/fixtures/existing-text.pdf \
+  --expect-text 'existing-text=HFS EXISTING TEXT 20260728'
 ```
 
-该合约验证成功结果是可读 PDF、页数未意外变化且有可提取文本层；拒绝样本必须返回 4xx/5xx 而不产生可下载的半成品。分别运行 `force_ocr`、默认 `skip-text` 和各 `optimize` 等级场景，并记录耗时、输出大小、文本质量和 PDF/A/兼容性结果，与迁移前基线及 owner 批准的容差比较。
+PDF/A 路径必须显式请求 `force_ocr=true`，并由 smoke 同时启用 `--force-ocr --require-pdfa`。固定 corpus 覆盖英文、简体中文、混排和倾斜页面：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 test/test.py \
+  --api-url http://127.0.0.1:8000/ocr/ \
+  --fixture english=test/fixtures/english.pdf \
+  --fixture chinese=test/fixtures/chinese.pdf \
+  --fixture mixed=test/fixtures/mixed.pdf \
+  --fixture deskew=test/fixtures/deskew.pdf \
+  --force-ocr \
+  --deskew \
+  --require-pdfa \
+  --reject-fixture test/fixtures/corrupt.pdf
+```
+
+两条 smoke 都验证 HTTP 成功结果是可读 PDF、页数未意外变化且有可提取文本层；`existing-text` 还核对原有文本仍可提取。`--require-pdfa` 只验证强制 OCR 路径的 PDF/A 标识。拒绝样本必须返回 4xx/5xx 而不产生可下载的半成品；加密 PDF 需使用另行审查的合法 fixture 验证。只有 owner 批准具体数值后才附加 `--max-output-bytes` 和 `--max-seconds`。各 `optimize` 等级应分别运行，并记录耗时、输出大小、文本质量和 PDF/A/兼容性结果，与迁移前基线及批准的容差比较。
 
 ## 发布前 owner 门禁
 
